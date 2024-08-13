@@ -98,13 +98,13 @@ impl CroppedTexture {
 
         let (width, height) = image.dimensions();
 
-        // UV to pixel coordinates
+        // UV to pixel coordinates with clamping
         let pixel_coords: Vec<(u32, u32)> = uv_coords
             .iter()
             .map(|(u, v)| {
                 (
-                    (u * width as f64) as u32,
-                    ((1.0 - v) * height as f64) as u32,
+                    (u.clamp(0.0, 1.0) * width as f64).min(width as f64 - 1.0) as u32,
+                    ((1.0 - v.clamp(0.0, 1.0)) * height as f64).min(height as f64 - 1.0) as u32,
                 )
             })
             .collect();
@@ -157,17 +157,12 @@ impl CroppedTexture {
             }
         }
 
-        let (min_x, min_y, max_x, max_y) = find_non_transparent_bounds(&clipped);
-        let trimmed = ImageBuffer::from_fn(max_x - min_x + 1, max_y - min_y + 1, |x, y| {
-            *clipped.get_pixel(x + min_x, y + min_y)
-        });
-
         // downsample
-        let scaled_width = (trimmed.width() as f32 * self.downsample_factor.value()) as u32;
-        let scaled_height = (trimmed.height() as f32 * self.downsample_factor.value()) as u32;
+        let scaled_width = (clipped.width() as f32 * self.downsample_factor.value()) as u32;
+        let scaled_height = (clipped.height() as f32 * self.downsample_factor.value()) as u32;
 
         DynamicImage::ImageRgba8(image::imageops::resize(
-            &trimmed,
+            &clipped,
             scaled_width,
             scaled_height,
             image::imageops::FilterType::Triangle,
@@ -196,22 +191,4 @@ fn is_point_inside_polygon(test_point: (f64, f64), polygon: &[(f64, f64)]) -> bo
     }
 
     is_inside
-}
-
-fn find_non_transparent_bounds(image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> (u32, u32, u32, u32) {
-    let mut min_x = image.width();
-    let mut min_y = image.height();
-    let mut max_x = 0;
-    let mut max_y = 0;
-
-    for (x, y, pixel) in image.enumerate_pixels() {
-        if pixel[3] > 0 {
-            min_x = min_x.min(x);
-            min_y = min_y.min(y);
-            max_x = max_x.max(x);
-            max_y = max_y.max(y);
-        }
-    }
-
-    (min_x, min_y, max_x, max_y)
 }
