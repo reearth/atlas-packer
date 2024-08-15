@@ -1,6 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::mpsc,
+};
 
 use image::{DynamicImage, GenericImageView, ImageBuffer};
+use rayon::prelude::*;
 use stretto::Cache;
 
 #[derive(Debug, Clone)]
@@ -43,7 +47,9 @@ impl TextureCache {
                 CroppedTexture::new(uv_coords, image_path, image, downsample_factor)
             }
             None => {
-                let image = image::open(image_path).expect("Failed to open image file");
+                let image = image::open(image_path).unwrap_or_else(|_| {
+                    panic!("Failed to open image file {}", image_path.display())
+                });
                 let cost = image.width() * image.height() * image.color().bytes_per_pixel() as u32;
                 self.cache
                     .insert(image_path.to_path_buf(), image.clone(), cost as i64);
@@ -145,19 +151,65 @@ impl CroppedTexture {
         let (x, y) = self.origin;
         let cropped_image = image.view(x, y, self.width, self.height).to_image();
 
-        // remove transparent area
+        // Collect pixels into a Vec and then process in parallel
+        let pixels: Vec<_> = cropped_image.enumerate_pixels().collect();
+
+        let samples = 1;
+        let num_threads = rayon::current_num_threads();
+        let chunk_size = (pixels.len() / num_threads).clamp(1, pixels.len() + 1);
+
+        let (sender, receiver) = mpsc::channel();
+
+        // If the center coordinates of the pixel are contained within a polygon composed of UV coordinates, the pixel is written
+        pixels
+            .par_chunks(chunk_size)
+            .for_each_with(sender, |s, chunk| {
+                let mut local_results = Vec::new();
+
+                for &(px, py, pixel) in chunk {
+                    let mut is_inside = false;
+
+                    'subpixels: for sx in 0..samples {
+                        for sy in 0..samples {
+                            let x = (px as f64 + (sx as f64 + 0.5) / samples as f64)
+                                / self.width as f64;
+                            let y = 1.0
+                                - (py as f64 + (sy as f64 + 0.5) / samples as f64)
+                                    / self.height as f64;
+                            // Adjust x and y to the center of the pixel
+                            let center_x = x + 0.5 / self.width as f64;
+                            let center_y = y - 0.5 / self.height as f64;
+
+                            if is_point_inside_polygon(
+                                (center_x, center_y),
+                                &self.cropped_uv_coords,
+                            ) {
+                                is_inside = true;
+                                break 'subpixels;
+                            }
+                        }
+                    }
+
+                    if is_inside {
+                        local_results.push((px, py, *pixel));
+                    } else {
+                        // FIXME: Do not crop temporarily because pixel boundary jaggies will occur.
+                        local_results.push((px, py, *pixel));
+                    }
+                }
+
+                s.send(local_results).unwrap();
+            });
+
+        // Collect results in the main thread
         let mut clipped = ImageBuffer::new(self.width, self.height);
-        for (px, py, pixel) in cropped_image.enumerate_pixels() {
-            let uv = (
-                px as f64 / self.width as f64,
-                1.0 - py as f64 / self.height as f64,
-            );
-            if is_point_inside_polygon(uv, &self.cropped_uv_coords) {
-                clipped.put_pixel(px, py, *pixel);
+        for received in receiver {
+            for (px, py, pixel) in received {
+                clipped.put_pixel(px, py, pixel);
             }
         }
 
-        // downsample
+        // Downsample
         let scaled_width = (clipped.width() as f32 * self.downsample_factor.value()) as u32;
         let scaled_height = (clipped.height() as f32 * self.downsample_factor.value()) as u32;
 

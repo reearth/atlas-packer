@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::Instant;
 
+use rayon::prelude::*;
+
 use atlas_packer::{
-    export::PngAtlasExporter,
+    export::JpegAtlasExporter,
     pack::TexturePacker,
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
     texture::{DownsampleFactor, TextureCache},
@@ -53,31 +56,32 @@ fn main() {
         padding: 0,
     };
     let placer = GuillotineTexturePlacer::new(config.clone());
-    let exporter = PngAtlasExporter::default();
-    let mut packer = TexturePacker::new(placer, exporter);
+    let exporter = JpegAtlasExporter::default();
+    let packer = Mutex::new(TexturePacker::new(placer, exporter));
 
     // Texture cache
     let texture_cache = TextureCache::new(100_000_000);
 
-    let mut texture_count = 0;
-
     let start = Instant::now();
 
     // Add textures to the atlas
-    polygons.iter().for_each(|polygon| {
+    polygons.par_iter().for_each(|polygon| {
         let texture = texture_cache.get_or_insert(
             &polygon.uv_coords,
             &polygon.texture_uri,
             &polygon.downsample_factor.value(),
         );
-        let _ = packer.add_texture(polygon.id.clone(), texture);
-        texture_count += 1
+        let _ = packer
+            .lock()
+            .unwrap()
+            .add_texture(polygon.id.clone(), texture);
         // println!("{:?}", info);
     });
-    println!("There are {} sheets of this texture.", texture_count);
 
     let duration = start.elapsed();
     println!("atlas process {:?}", duration);
+
+    let mut packer = packer.into_inner().unwrap();
 
     packer.finalize();
 
