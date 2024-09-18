@@ -2,12 +2,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use atlas_packer::pack::AtlasPacker;
 use atlas_packer::texture::{CroppedTexture, TextureSizeCache};
 use rayon::prelude::*;
 
 use atlas_packer::{
     export::JpegAtlasExporter,
-    pack::TexturePacker,
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
     texture::{DownsampleFactor, TextureCache},
 };
@@ -56,9 +56,8 @@ fn main() {
         height: 4096,
         padding: 0,
     };
-    let placer = GuillotineTexturePlacer::new(config.clone());
-    let exporter = JpegAtlasExporter::default();
-    let packer = Mutex::new(TexturePacker::new(placer, exporter));
+
+    let packer = Mutex::new(AtlasPacker::default());
 
     let packing_start = Instant::now();
 
@@ -83,9 +82,8 @@ fn main() {
         println!("{}, texture place process {:?}", polygon.id, place_duration);
     });
 
-    let mut packer = packer.into_inner().unwrap();
-
-    packer.finalize();
+    let packer = packer.into_inner().unwrap();
+    let packed = packer.pack(GuillotineTexturePlacer::new(config.clone()));
 
     let duration = packing_start.elapsed();
     println!("all packing process {:?}", duration);
@@ -95,7 +93,13 @@ fn main() {
     // Caches the original textures for exporting to an atlas.
     let texture_cache = TextureCache::new(100_000_000);
     let output_dir = Path::new("./examples/output/");
-    packer.export(output_dir, &texture_cache, config.width(), config.height());
+    packed.export(
+        JpegAtlasExporter::default(),
+        output_dir,
+        &texture_cache,
+        config.width(),
+        config.height(),
+    );
     let duration = start.elapsed();
     println!("all atlas export process {:?}", duration);
 
