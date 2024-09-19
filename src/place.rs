@@ -59,12 +59,13 @@ pub struct PlacedTextureInfo {
 pub trait TexturePlacer: Send + Sync {
     fn config(&self) -> &TexturePlacerConfig;
 
+    /// (toplevel_texture, children_textures) -> (toplevel_texture_info, children_texture_infos)
     fn place_texture(
         &mut self,
-        id: &str,
-        texture: &CroppedTexture,
+        toplevel_texture_tuple: (&CroppedTexture, &str), // (texture_id, texture)
+        children_texture_tuples: Vec<(&CroppedTexture, &str)>,
         parent_atlas_id: &str,
-    ) -> PlacedTextureInfo;
+    ) -> (PlacedTextureInfo, Vec<Option<PlacedTextureInfo>>);
 
     fn can_place(&self, texture: &CroppedTexture) -> bool;
 
@@ -215,36 +216,39 @@ impl TexturePlacer for GuillotineTexturePlacer {
 
     fn place_texture(
         &mut self,
-        id: &str,
-        texture: &CroppedTexture,
+        toplevel_texture_tuple: (&CroppedTexture, &str), // (texture, texture_id)
+        children_texture_tuples: Vec<(&CroppedTexture, &str)>,
         parent_atlas_id: &str,
-    ) -> PlacedTextureInfo {
+    ) -> (PlacedTextureInfo, Vec<Option<PlacedTextureInfo>>) {
+        let (toplevel_texture, toplevel_texture_id) = toplevel_texture_tuple;
+
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            texture.width,
-            texture.height,
-            texture.downsample_factor.value(),
+            toplevel_texture.width,
+            toplevel_texture.height,
+            toplevel_texture.downsample_factor.value(),
         );
 
         let width = scaled_width + self.config.padding;
         let height = scaled_height + self.config.padding;
 
+        let cropped_uv_to_placed_uv = |rect: Rect, (u, v): (f64, f64)| {
+            let (x, y) = self.uv_to_pixel((u, v), scaled_width, scaled_height);
+            (
+                (rect.x as f64 + self.config.padding as f64 + x as f64) / self.config.width as f64,
+                1.0 - ((rect.y as f64 + self.config.padding as f64 + y as f64)
+                    / self.config.height as f64),
+            )
+        };
+
         if let Some(rect) = self.find_best_rect(width, height) {
-            let placed_uv_coords = texture
+            let placed_uv_coords = toplevel_texture
                 .cropped_uv_coords
                 .iter()
-                .map(|&(u, v)| {
-                    let (x, y) = self.uv_to_pixel((u, v), scaled_width, scaled_height);
-                    (
-                        (rect.x as f64 + self.config.padding as f64 + x as f64)
-                            / self.config.width as f64,
-                        1.0 - ((rect.y as f64 + self.config.padding as f64 + y as f64)
-                            / self.config.height as f64),
-                    )
-                })
+                .map(|&(u, v)| cropped_uv_to_placed_uv(rect, (u, v)))
                 .collect::<Vec<(f64, f64)>>();
 
-            let placed = PlacedTextureInfo {
-                id: id.to_string(),
+            let toplevel_placed = PlacedTextureInfo {
+                id: toplevel_texture_id.to_string(),
                 atlas_id: parent_atlas_id.to_string(),
                 origin: (rect.x + self.config.padding, rect.y + self.config.padding),
                 width: scaled_width,
@@ -252,15 +256,45 @@ impl TexturePlacer for GuillotineTexturePlacer {
                 placed_uv_coords,
             };
 
-            self.used_rects.insert(id.to_string(), placed.clone());
+            let children_placed = children_texture_tuples
+                .iter()
+                .map(|(children_texture, children_texture_id)| {
+                    let offset = if let Some(offset) = toplevel_texture.covers(children_texture) {
+                        println!("offset: {:?}", offset);
+                        offset
+                    } else {
+                        return None;
+                    };
+
+                    let placed_uv_coords = children_texture
+                        .cropped_uv_coords
+                        .iter()
+                        .map(|&(u, v)| cropped_uv_to_placed_uv(rect, (u, v)))
+                        .collect::<Vec<(f64, f64)>>();
+
+                    Some(PlacedTextureInfo {
+                        id: children_texture_id.to_string(),
+                        atlas_id: parent_atlas_id.to_string(),
+                        origin: (
+                            rect.x + self.config.padding + offset.0,
+                            rect.y + self.config.padding + offset.1,
+                        ),
+                        width: scaled_width,
+                        height: scaled_height,
+                        placed_uv_coords,
+                    })
+                })
+                .collect::<Vec<Option<PlacedTextureInfo>>>();
+            self.used_rects
+                .insert(toplevel_texture_id.to_string(), toplevel_placed.clone());
             self.free_rects.retain(|r| r != &rect);
-            self.split_rect(rect, &placed);
+            self.split_rect(rect, &toplevel_placed);
             self.merge_free_rects();
 
-            placed
+            (toplevel_placed, children_placed)
         } else {
             // todo: Consideration of processing when the texture is larger than the atlas size
-            panic!("Texture could not be placed: {}", id);
+            panic!("Texture could not be placed: {}", toplevel_texture_id);
         }
     }
 

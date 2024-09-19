@@ -123,6 +123,7 @@ impl Drop for TextureCache {
 }
 
 // A structure that retains an image cut out from the original image.
+#[derive(Debug, Clone)]
 pub struct CroppedTexture {
     pub image_path: PathBuf,
     // The origin of the cropped image in the original image (top-left corner).
@@ -164,6 +165,35 @@ impl CroppedTexture {
             height: cropped_height,
             downsample_factor,
             cropped_uv_coords: dest_uv_coords,
+        }
+    }
+
+    /// Check if the two textures partially or completely overlap.
+    pub(super) fn overlaps(&self, other: &Self) -> bool {
+        if self.image_path != other.image_path {
+            return false;
+        }
+
+        let (x1, y1, w1, h1) = (self.origin.0, self.origin.1, self.width, self.height);
+        let (x2, y2, w2, h2) = (other.origin.0, other.origin.1, other.width, other.height);
+
+        !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1)
+    }
+
+    /// Check if the texture completely covers the other texture.
+    /// If the texture completely covers the other texture, return the offset.
+    pub(super) fn covers(&self, other: &Self) -> Option<(u32, u32)> {
+        if self.image_path != other.image_path {
+            return None;
+        }
+
+        let (x1, y1, w1, h1) = (self.origin.0, self.origin.1, self.width, self.height);
+        let (x2, y2, w2, h2) = (other.origin.0, other.origin.1, other.width, other.height);
+
+        if x1 <= x2 && y1 <= y2 && x1 + w1 >= x2 + w2 && y1 + h1 >= y2 + h2 {
+            Some((x2 - x1, y2 - y1))
+        } else {
+            None
         }
     }
 

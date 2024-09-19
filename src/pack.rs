@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use hashbrown::HashMap;
-use rayon::prelude::*;
+use rayon::{prelude::*, vec};
 
 use crate::export::AtlasExporter;
 use crate::place::{PlacedTextureInfo, TexturePlacer};
@@ -28,10 +28,9 @@ impl AtlasPacker {
     }
 
     pub fn pack<P: TexturePlacer>(self, mut placer: P) -> PackedAtlasProvider {
-        // See the definition of PackedAtlasProvider for more information about the below variables
+        let mut texture_info_map: HashMap<String, (String, usize)> = HashMap::new();
         let mut current_atlas: Atlas = Vec::new();
         let mut atlases: HashMap<String, Atlas> = HashMap::new();
-        let mut texture_info_map: HashMap<String, (String, usize)> = HashMap::new();
 
         for (texture_id, texture) in self.textures.iter() {
             let (atlas_id, atlas_index) = {
@@ -39,11 +38,12 @@ impl AtlasPacker {
 
                 if placer.can_place(texture) {
                     let texture_info = placer.place_texture(
-                        texture_id,
-                        texture,
+                        (texture, texture_id),
+                        vec![(texture, texture_id)],
                         current_atlas_id.to_string().as_ref(),
                     );
-                    current_atlas.push(texture_info.clone());
+                    let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
+                    current_atlas.push(first_info);
                     (current_atlas_id.to_string(), current_atlas.len() - 1)
                 } else {
                     atlases.insert(current_atlas_id.to_string(), current_atlas.clone());
@@ -53,11 +53,12 @@ impl AtlasPacker {
                     let current_atlas_id = atlases.len();
 
                     let texture_info = placer.place_texture(
-                        texture_id,
-                        texture,
+                        (texture, texture_id),
+                        vec![(texture, texture_id)],
                         current_atlas_id.to_string().as_ref(),
                     );
-                    current_atlas.push(texture_info.clone());
+                    let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
+                    current_atlas.push(first_info);
                     (current_atlas_id.to_string(), current_atlas.len() - 1)
                 }
             };
