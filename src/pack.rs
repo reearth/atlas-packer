@@ -35,33 +35,22 @@ impl AtlasPacker {
 
         for (texture_id, texture) in self.textures.iter() {
             let (atlas_id, atlas_index) = {
-                let current_atlas_id = atlases.len();
-
-                if placer.can_place(texture) {
-                    let texture_info = placer.place_texture(
-                        (texture, texture_id),
-                        vec![(texture, texture_id)],
-                        current_atlas_id.to_string().as_ref(),
-                    );
-                    let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
-                    current_atlas.push(first_info);
-                    (current_atlas_id.to_string(), current_atlas.len() - 1)
-                } else {
+                if !placer.can_place(texture) {
+                    let current_atlas_id = atlases.len();
                     atlases.insert(current_atlas_id.to_string(), current_atlas.clone());
                     current_atlas.clear();
                     placer.reset_param();
-
-                    let current_atlas_id = atlases.len();
-
-                    let texture_info = placer.place_texture(
-                        (texture, texture_id),
-                        vec![(texture, texture_id)],
-                        current_atlas_id.to_string().as_ref(),
-                    );
-                    let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
-                    current_atlas.push(first_info);
-                    (current_atlas_id.to_string(), current_atlas.len() - 1)
                 }
+
+                let current_atlas_id: usize = atlases.len();
+                let texture_info = placer.place_texture(
+                    (texture, texture_id),
+                    vec![(texture, texture_id)],
+                    current_atlas_id.to_string().as_ref(),
+                );
+                let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
+                current_atlas.push(first_info);
+                (current_atlas_id.to_string(), current_atlas.len() - 1)
             };
             texture_info_map.insert(texture_id.clone(), (atlas_id, atlas_index));
         }
