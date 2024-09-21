@@ -17,8 +17,7 @@ impl DisjointSet {
         if self.parent[x] == x {
             x
         } else {
-            let root = self.root(self.parent[x]);
-            root
+            self.root(self.parent[x])
         }
     }
 
@@ -30,6 +29,10 @@ impl DisjointSet {
 
     pub fn is_same(&self, x: usize, y: usize) -> bool {
         self.root(x) == self.root(y)
+    }
+
+    pub fn compress(&mut self) {
+        self.parent = self.parent.iter().map(|&x| self.root(x)).collect();
     }
 }
 

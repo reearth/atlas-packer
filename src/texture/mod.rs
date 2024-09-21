@@ -27,20 +27,17 @@ impl DownsampleFactor {
     }
 }
 
-// A structure that retains an image cut out from the original image.
+/// Texture with mapped polygon.
 #[derive(Debug, Clone)]
-pub struct CroppedTexture {
+pub struct PolygonMappedTexture {
+    // texture
     pub image_path: PathBuf,
-    // The origin of the cropped image in the original image (top-left corner).
-    pub origin: (u32, u32),
-    pub width: u32,
-    pub height: u32,
     pub downsample_factor: DownsampleFactor,
-    // UV coordinates for the cropped texture (bottom-left origin).
-    pub cropped_uv_coords: Vec<(f64, f64)>,
+    // polygon
+    pub pixel_coords: Vec<(u32, u32)>,
 }
 
-impl CroppedTexture {
+impl PolygonMappedTexture {
     pub fn new(
         image_path: &Path,
         size: (u32, u32),
@@ -48,57 +45,110 @@ impl CroppedTexture {
         downsample_factor: DownsampleFactor,
     ) -> Self {
         let pixel_coords = uv_to_pixel_coords(uv_coords, size.0, size.1);
-        let (min_x, min_y, max_x, max_y) = calc_bbox(&pixel_coords);
 
-        let cropped_width = max_x - min_x;
-        let cropped_height = max_y - min_y;
-
-        let dest_uv_coords = pixel_coords
-            .iter()
-            .map(|(x, y)| {
-                (
-                    (*x - min_x) as f64 / cropped_width as f64,
-                    1.0 - (*y - min_y) as f64 / cropped_height as f64,
-                )
-            })
-            .collect::<Vec<(f64, f64)>>();
-
-        CroppedTexture {
+        PolygonMappedTexture {
             image_path: image_path.to_path_buf(),
-            origin: (min_x, min_y),
-            width: cropped_width,
-            height: cropped_height,
             downsample_factor,
-            cropped_uv_coords: dest_uv_coords,
+            pixel_coords,
         }
     }
 
-    /// Check if the two textures partially or completely overlap.
-    pub(super) fn overlaps(&self, other: &Self) -> bool {
+    pub fn get_bbox(&self) -> (u32, u32, u32, u32) {
+        let (min_x, min_y, max_x, max_y) = calc_bbox(&self.pixel_coords);
+        (min_x, min_y, max_x - min_x, max_y - min_y)
+    }
+
+    pub fn bbox_overlaps(&self, other: &Self) -> bool {
         if self.image_path != other.image_path {
             return false;
         }
 
-        let (x1, y1, w1, h1) = (self.origin.0, self.origin.1, self.width, self.height);
-        let (x2, y2, w2, h2) = (other.origin.0, other.origin.1, other.width, other.height);
+        let (x1, y1, w1, h1) = self.get_bbox();
+        let (x2, y2, w2, h2) = other.get_bbox();
 
         !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1)
     }
 
-    /// Check if the texture completely covers the other texture.
-    /// If the texture completely covers the other texture, return the offset.
-    pub(super) fn covers(&self, other: &Self) -> Option<(u32, u32)> {
-        if self.image_path != other.image_path {
+    pub fn get_cropped_uv_coords(
+        &self,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Vec<(f64, f64)> {
+        self.pixel_coords
+            .iter()
+            .map(|(px, py)| {
+                (
+                    (*px - x) as f64 / width as f64,
+                    1.0 - (*py - y) as f64 / height as f64,
+                )
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ToplevelTexture {
+    pub image_path: PathBuf,
+    // The origin of the cropped image in the original image (top-left corner).
+    origin: (u32, u32),
+    pub width: u32,
+    pub height: u32,
+    pub downsample_factor: DownsampleFactor,
+}
+
+impl ToplevelTexture {
+    pub fn new(texture: &PolygonMappedTexture) -> Self {
+        let bounding_box = texture.get_bbox();
+        Self {
+            image_path: texture.image_path.clone(),
+            origin: (bounding_box.0, bounding_box.1),
+            width: bounding_box.2,
+            height: bounding_box.3,
+            downsample_factor: texture.downsample_factor.clone(),
+        }
+    }
+
+    pub fn expand(&self, texture: &PolygonMappedTexture) -> Option<Self> {
+        if self.image_path != texture.image_path {
             return None;
         }
 
-        let (x1, y1, w1, h1) = (self.origin.0, self.origin.1, self.width, self.height);
-        let (x2, y2, w2, h2) = (other.origin.0, other.origin.1, other.width, other.height);
+        let bounding_box_0 = texture.get_bbox();
+        let (min_x_0, min_y_0, max_x_0, max_y_0) = bounding_box_0;
 
-        if x1 <= x2 && y1 <= y2 && x1 + w1 >= x2 + w2 && y1 + h1 >= y2 + h2 {
-            Some((x2 - x1, y2 - y1))
-        } else {
-            None
+        let (min_x_1, min_y_1, max_x_1, max_y_1) = (
+            self.origin.0,
+            self.origin.1,
+            self.origin.0 + self.width,
+            self.origin.1 + self.height,
+        );
+
+        let (min_x_new, min_y_new) = (min_x_0.min(min_x_1), min_y_0.min(min_y_1));
+        let (max_x_new, max_y_new) = (max_x_0.max(max_x_1), max_y_0.max(max_y_1));
+        let (width_new, height_new) = (max_x_new - min_x_new, max_y_new - min_y_new);
+
+        Some(Self {
+            image_path: texture.image_path.clone(),
+            origin: (min_x_new, min_y_new),
+            width: width_new,
+            height: height_new,
+            downsample_factor: DownsampleFactor::new(
+                &self
+                    .downsample_factor
+                    .value()
+                    .max(texture.downsample_factor.value()),
+            ),
+        })
+    }
+
+    pub fn get_child(&self, texture: &PolygonMappedTexture) -> ChildTexture {
+        let (x, y, width, height) = texture.get_bbox();
+        let cropped_uv_coords = texture.get_cropped_uv_coords(x, y, width, height);
+        ChildTexture {
+            image_path: texture.image_path.clone(),
+            cropped_uv_coords,
         }
     }
 
@@ -135,10 +185,13 @@ impl CroppedTexture {
                             let center_x = x + 0.5 / self.width as f64;
                             let center_y = y - 0.5 / self.height as f64;
 
-                            if is_point_inside_polygon(
+                            // TODO !!!
+                            if
+                            /*is_point_inside_polygon(
                                 (center_x, center_y),
                                 &self.cropped_uv_coords,
-                            ) {
+                            )*/
+                            true {
                                 is_inside = true;
                                 break 'subpixels;
                             }
@@ -177,25 +230,9 @@ impl CroppedTexture {
     }
 }
 
-fn is_point_inside_polygon(test_point: (f64, f64), polygon: &[(f64, f64)]) -> bool {
-    let mut is_inside = false;
-    let mut previous_vertex_index = polygon.len() - 1;
-
-    for current_vertex_index in 0..polygon.len() {
-        let (current_x, current_y) = polygon[current_vertex_index];
-        let (previous_x, previous_y) = polygon[previous_vertex_index];
-
-        let is_y_between_vertices = (current_y > test_point.1) != (previous_y > test_point.1);
-        let does_ray_intersect = test_point.0
-            < (previous_x - current_x) * (test_point.1 - current_y) / (previous_y - current_y)
-                + current_x;
-
-        if is_y_between_vertices && does_ray_intersect {
-            is_inside = !is_inside;
-        }
-
-        previous_vertex_index = current_vertex_index;
-    }
-
-    is_inside
+#[derive(Debug, Clone)]
+pub struct ChildTexture {
+    image_path: PathBuf,
+    // UV coordinates for the toplevel texture (bottom-left origin).
+    pub cropped_uv_coords: Vec<(f64, f64)>,
 }

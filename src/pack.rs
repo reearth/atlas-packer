@@ -3,16 +3,16 @@ use std::path::Path;
 use hashbrown::HashMap;
 use rayon::prelude::*;
 
+use crate::disjoint_set::DisjointSet;
 use crate::export::AtlasExporter;
-use crate::place::{PlacedTextureInfo, TexturePlacer};
+use crate::place::{PlacedPolygonUVCoords, PlacedTextureGeometry, TexturePlacer};
 use crate::texture::cache::TextureCache;
-use crate::texture::CroppedTexture;
-
-pub type Atlas = Vec<PlacedTextureInfo>;
+use crate::texture::{ChildTexture, PolygonMappedTexture, ToplevelTexture};
+pub type Atlas = Vec<PlacedTextureGeometry>;
 
 pub struct AtlasPacker {
     // texture id -> texture
-    textures: HashMap<String, CroppedTexture>,
+    textures: HashMap<String, PolygonMappedTexture>,
 }
 
 impl Default for AtlasPacker {
@@ -23,36 +23,117 @@ impl Default for AtlasPacker {
     }
 }
 
+#[derive(Clone)]
+pub(super) struct Cluster {
+    pub toplevel_texture: ToplevelTexture,
+    // (texture id, child texture)
+    pub children: Vec<(String, ChildTexture)>,
+}
+
 impl AtlasPacker {
-    pub fn add_texture(&mut self, texture_id: String, texture: CroppedTexture) {
+    pub fn add_texture(&mut self, texture_id: String, texture: PolygonMappedTexture) {
         self.textures.insert(texture_id, texture);
     }
 
+    fn create_cluster(&self) -> HashMap<String, Cluster> {
+        let texture_ids: Vec<String> = self.textures.keys().cloned().collect();
+
+        let disjoint_set = {
+            let mut disjoint_set = DisjointSet::new(texture_ids.len());
+
+            for i in 0..texture_ids.len() {
+                for j in (i + 1)..texture_ids.len() {
+                    let texture_i = self.textures.get(&texture_ids[i]).unwrap();
+                    let texture_j = self.textures.get(&texture_ids[j]).unwrap();
+
+                    if texture_i.bbox_overlaps(texture_j) {
+                        disjoint_set.unite(i, j);
+                    }
+                }
+            }
+            disjoint_set.compress();
+            disjoint_set
+        };
+
+        // cluster id -> texture ids
+        let mut cluster_id_map: HashMap<String, Vec<String>> = HashMap::new();
+        for i in 0..texture_ids.len() {
+            let cluster_id = disjoint_set.root(i).to_string();
+            let texture_id = texture_ids[i].clone();
+            cluster_id_map
+                .entry(cluster_id.to_string())
+                .or_insert_with(Vec::new)
+                .push(texture_id);
+        }
+
+        // create toplevel textures
+        let cluster_map = cluster_id_map
+            .iter()
+            .filter_map(|(cluster_id, texture_ids)| {
+                let toplevel_texture = texture_ids
+                    .iter()
+                    .fold(None, |acc: Option<ToplevelTexture>, texture_id| {
+                        let texture = self.textures.get(texture_id).unwrap();
+                        match acc {
+                            Some(toplevel_texture) => toplevel_texture.expand(texture),
+                            None => Some(ToplevelTexture::new(texture)),
+                        }
+                    })
+                    .unwrap();
+
+                let children = texture_ids
+                    .iter()
+                    .map(|texture_id| {
+                        let texture = self.textures.get(texture_id).unwrap();
+                        (texture_id.clone(), toplevel_texture.get_child(texture))
+                    })
+                    .collect::<Vec<(String, ChildTexture)>>();
+
+                Some((
+                    cluster_id.clone(),
+                    Cluster {
+                        toplevel_texture,
+                        children,
+                    },
+                ))
+            })
+            .collect::<HashMap<String, Cluster>>();
+
+        cluster_map
+    }
+
     pub fn pack<P: TexturePlacer>(self, mut placer: P) -> PackedAtlasProvider {
-        let mut texture_info_map: HashMap<String, (String, usize)> = HashMap::new();
         let mut current_atlas: Atlas = Vec::new();
         let mut atlases: HashMap<String, Atlas> = HashMap::new();
 
-        for (texture_id, texture) in self.textures.iter() {
-            let (atlas_id, atlas_index) = {
-                if !placer.can_place(texture) {
-                    let current_atlas_id = atlases.len();
-                    atlases.insert(current_atlas_id.to_string(), current_atlas.clone());
-                    current_atlas.clear();
-                    placer.reset_param();
-                }
+        let clusters = self.create_cluster();
+        let mut texture_info_map: HashMap<String, PlacedPolygonUVCoords> = HashMap::new();
+        for (cluster_id, cluster) in clusters.iter() {
+            if !placer.can_place(&cluster.toplevel_texture) {
+                let current_atlas_id = atlases.len();
+                atlases.insert(current_atlas_id.to_string(), current_atlas.clone());
+                current_atlas.clear();
+                placer.reset_param();
+            }
 
-                let current_atlas_id: usize = atlases.len();
-                let texture_info = placer.place_texture(
-                    (texture, texture_id),
-                    vec![(texture, texture_id)],
-                    current_atlas_id.to_string().as_ref(),
-                );
-                let first_info = texture_info.1.get(0).unwrap().clone().unwrap();
-                current_atlas.push(first_info);
-                (current_atlas_id.to_string(), current_atlas.len() - 1)
-            };
-            texture_info_map.insert(texture_id.clone(), (atlas_id, atlas_index));
+            let current_atlas_id = atlases.len().to_string();
+            let (toplevel_texture_info, children_texture_infos) = placer.place_texture(
+                cluster.toplevel_texture.clone(),
+                cluster.children.clone(),
+                cluster_id.clone(),
+                current_atlas_id,
+            );
+
+            current_atlas.push(toplevel_texture_info.clone());
+
+            for (child_texture_info, child_texture_id) in children_texture_infos
+                .iter()
+                .zip(cluster.children.iter().map(|(id, _)| id))
+            {
+                if let Some(child_texture_info) = child_texture_info {
+                    texture_info_map.insert(child_texture_id.clone(), child_texture_info.clone());
+                }
+            }
         }
 
         // treat the last atlas
@@ -64,7 +145,7 @@ impl AtlasPacker {
         }
 
         PackedAtlasProvider {
-            textures: self.textures,
+            clusters,
             atlases,
             texture_info_map,
         }
@@ -72,12 +153,11 @@ impl AtlasPacker {
 }
 
 pub struct PackedAtlasProvider {
-    // texture id -> texture
-    textures: HashMap<String, CroppedTexture>,
+    clusters: HashMap<String, Cluster>,
     // atlas id -> atlas
     atlases: HashMap<String, Atlas>,
-    // texture id -> (atlas id, index in the atlas)
-    texture_info_map: HashMap<String, (String, usize)>,
+    // texture id -> placed texture info
+    texture_info_map: HashMap<String, PlacedPolygonUVCoords>,
 }
 
 impl PackedAtlasProvider {
@@ -93,7 +173,11 @@ impl PackedAtlasProvider {
             let output_path = output_dir.join(id);
             exporter.export(
                 atlas,
-                &self.textures,
+                &self
+                    .clusters
+                    .iter()
+                    .map(|(id, cluster)| (id.clone(), cluster.toplevel_texture.clone()))
+                    .collect::<HashMap<String, ToplevelTexture>>(),
                 &output_path,
                 texture_cache,
                 width,
@@ -102,9 +186,7 @@ impl PackedAtlasProvider {
         });
     }
 
-    pub fn get_texture_info(&self, id: &str) -> Option<&PlacedTextureInfo> {
-        let (atlas_id, altas_index) = self.texture_info_map.get(id)?;
-        let atlas = self.atlases.get(atlas_id)?;
-        atlas.get(*altas_index)
+    pub fn get_texture_info(&self, id: &str) -> Option<&PlacedPolygonUVCoords> {
+        self.texture_info_map.get(id)
     }
 }

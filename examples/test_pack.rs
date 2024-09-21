@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use atlas_packer::texture::PolygonMappedTexture;
 use rayon::prelude::*;
 
 use atlas_packer::{
@@ -10,7 +11,7 @@ use atlas_packer::{
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
     texture::{
         cache::{TextureCache, TextureSizeCache},
-        CroppedTexture, DownsampleFactor,
+        DownsampleFactor,
     },
 };
 
@@ -69,7 +70,7 @@ fn main() {
     polygons.par_iter().for_each(|polygon| {
         let place_start = Instant::now();
         let texture_size = texture_size_cache.get_or_insert(&polygon.texture_uri);
-        let cropped_texture = CroppedTexture::new(
+        let cropped_texture = PolygonMappedTexture::new(
             &polygon.texture_uri,
             texture_size,
             &polygon.uv_coords,

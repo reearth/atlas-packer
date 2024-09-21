@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::texture::CroppedTexture;
+use crate::texture::{ChildTexture, ToplevelTexture};
 
 #[derive(Debug, Clone)]
 pub struct TexturePlacerConfig {
@@ -45,13 +45,19 @@ impl TexturePlacerConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct PlacedTextureInfo {
-    pub id: String,
+pub struct PlacedTextureGeometry {
+    pub cluster_id: String,
     pub atlas_id: String,
     // Pixel coordinates on atlas
     pub origin: (u32, u32),
     pub width: u32,
     pub height: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PlacedPolygonUVCoords {
+    pub id: String,
+    pub atlas_id: String,
     // UV coordinates on atlas
     pub placed_uv_coords: Vec<(f64, f64)>,
 }
@@ -62,12 +68,13 @@ pub trait TexturePlacer: Send + Sync {
     /// (toplevel_texture, children_textures) -> (toplevel_texture_info, children_texture_infos)
     fn place_texture(
         &mut self,
-        toplevel_texture_tuple: (&CroppedTexture, &str), // (texture_id, texture)
-        children_texture_tuples: Vec<(&CroppedTexture, &str)>,
-        parent_atlas_id: &str,
-    ) -> (PlacedTextureInfo, Vec<Option<PlacedTextureInfo>>);
+        toplevel_texture: ToplevelTexture,
+        children: Vec<(String, ChildTexture)>,
+        cluster_id: String,
+        parent_atlas_id: String,
+    ) -> (PlacedTextureGeometry, Vec<Option<PlacedPolygonUVCoords>>);
 
-    fn can_place(&self, texture: &CroppedTexture) -> bool;
+    fn can_place(&self, texture: &ToplevelTexture) -> bool;
 
     fn reset_param(&mut self);
 
@@ -81,7 +88,7 @@ pub trait TexturePlacer: Send + Sync {
 pub struct GuillotineTexturePlacer {
     config: TexturePlacerConfig,
     free_rects: Vec<Rect>,
-    used_rects: HashMap<String, PlacedTextureInfo>,
+    used_rects: HashMap<String, PlacedTextureGeometry>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -115,7 +122,7 @@ impl GuillotineTexturePlacer {
             .cloned()
     }
 
-    fn split_rect(&mut self, rect: Rect, placed: &PlacedTextureInfo) {
+    fn split_rect(&mut self, rect: Rect, placed: &PlacedTextureGeometry) {
         let padding = self.config.padding;
         let (right_rect, bottom_rect) = if rect.width <= rect.height {
             (
@@ -216,12 +223,11 @@ impl TexturePlacer for GuillotineTexturePlacer {
 
     fn place_texture(
         &mut self,
-        toplevel_texture_tuple: (&CroppedTexture, &str), // (texture, texture_id)
-        children_texture_tuples: Vec<(&CroppedTexture, &str)>,
-        parent_atlas_id: &str,
-    ) -> (PlacedTextureInfo, Vec<Option<PlacedTextureInfo>>) {
-        let (toplevel_texture, toplevel_texture_id) = toplevel_texture_tuple;
-
+        toplevel_texture: ToplevelTexture,
+        children: Vec<(String, ChildTexture)>,
+        cluster_id: String,
+        parent_atlas_id: String,
+    ) -> (PlacedTextureGeometry, Vec<Option<PlacedPolygonUVCoords>>) {
         let (scaled_width, scaled_height) = self.scale_dimensions(
             toplevel_texture.width,
             toplevel_texture.height,
@@ -241,63 +247,44 @@ impl TexturePlacer for GuillotineTexturePlacer {
         };
 
         if let Some(rect) = self.find_best_rect(width, height) {
-            let placed_uv_coords = toplevel_texture
-                .cropped_uv_coords
-                .iter()
-                .map(|&(u, v)| cropped_uv_to_placed_uv(rect, (u, v)))
-                .collect::<Vec<(f64, f64)>>();
-
-            let toplevel_placed = PlacedTextureInfo {
-                id: toplevel_texture_id.to_string(),
+            let toplevel_placed = PlacedTextureGeometry {
+                cluster_id: cluster_id.clone(),
                 atlas_id: parent_atlas_id.to_string(),
                 origin: (rect.x + self.config.padding, rect.y + self.config.padding),
                 width: scaled_width,
                 height: scaled_height,
-                placed_uv_coords,
             };
 
-            let children_placed = children_texture_tuples
+            let children_placed = children
                 .iter()
-                .map(|(children_texture, children_texture_id)| {
-                    let offset = if let Some(offset) = toplevel_texture.covers(children_texture) {
-                        offset
-                    } else {
-                        return None;
-                    };
-
+                .map(|(children_texture_id, children_texture)| {
                     let placed_uv_coords = children_texture
                         .cropped_uv_coords
                         .iter()
                         .map(|&(u, v)| cropped_uv_to_placed_uv(rect, (u, v)))
                         .collect::<Vec<(f64, f64)>>();
 
-                    Some(PlacedTextureInfo {
+                    Some(PlacedPolygonUVCoords {
                         id: children_texture_id.to_string(),
                         atlas_id: parent_atlas_id.to_string(),
-                        origin: (
-                            rect.x + self.config.padding + offset.0,
-                            rect.y + self.config.padding + offset.1,
-                        ),
-                        width: scaled_width,
-                        height: scaled_height,
                         placed_uv_coords,
                     })
                 })
-                .collect::<Vec<Option<PlacedTextureInfo>>>();
+                .collect::<Vec<Option<PlacedPolygonUVCoords>>>();
+
             self.used_rects
-                .insert(toplevel_texture_id.to_string(), toplevel_placed.clone());
+                .insert(cluster_id.to_string(), toplevel_placed.clone());
             self.free_rects.retain(|r| r != &rect);
             self.split_rect(rect, &toplevel_placed);
             self.merge_free_rects();
-
             (toplevel_placed, children_placed)
         } else {
             // todo: Consideration of processing when the texture is larger than the atlas size
-            panic!("Texture could not be placed: {}", toplevel_texture_id);
+            panic!("Texture could not be placed: {}", cluster_id);
         }
     }
 
-    fn can_place(&self, texture: &CroppedTexture) -> bool {
+    fn can_place(&self, texture: &ToplevelTexture) -> bool {
         let (scaled_width, scaled_height) = self.scale_dimensions(
             texture.width,
             texture.height,
