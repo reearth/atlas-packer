@@ -260,7 +260,6 @@ impl TexturePlacer for GuillotineTexturePlacer {
                 .iter()
                 .map(|(children_texture, children_texture_id)| {
                     let offset = if let Some(offset) = toplevel_texture.covers(children_texture) {
-                        println!("offset: {:?}", offset);
                         offset
                     } else {
                         return None;

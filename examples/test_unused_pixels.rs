@@ -6,7 +6,7 @@ use atlas_packer::{
     export::PngAtlasExporter,
     pack::AtlasPacker,
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
-    texture::TextureCache,
+    texture::cache::TextureCache,
 };
 
 use utils::unused_pixels;

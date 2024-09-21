@@ -6,7 +6,8 @@ use image::{ImageBuffer, ImageFormat, Rgb, Rgba};
 use rayon::prelude::*;
 
 use crate::place::PlacedTextureInfo;
-use crate::texture::{CroppedTexture, TextureCache};
+use crate::texture::cache::TextureCache;
+use crate::texture::CroppedTexture;
 
 pub trait AtlasExporter: Sync + Send {
     fn export(

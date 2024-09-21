@@ -2,14 +2,16 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
-use atlas_packer::pack::AtlasPacker;
-use atlas_packer::texture::{CroppedTexture, TextureSizeCache};
 use rayon::prelude::*;
 
 use atlas_packer::{
     export::JpegAtlasExporter,
+    pack::AtlasPacker,
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
-    texture::{DownsampleFactor, TextureCache},
+    texture::{
+        cache::{TextureCache, TextureSizeCache},
+        CroppedTexture, DownsampleFactor,
+    },
 };
 
 #[derive(Debug, Clone)]

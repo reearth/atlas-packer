@@ -1,7 +1,7 @@
 /// Very simple disjoint set implementation for clustering cropped textures
 /// - fixed size
 /// - cannot divide the union
-pub(super) struct DisjointSet {
+pub struct DisjointSet {
     parent: Vec<usize>,
 }
 

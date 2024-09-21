@@ -1,11 +1,12 @@
 use std::path::Path;
 
 use hashbrown::HashMap;
-use rayon::{prelude::*, vec};
+use rayon::prelude::*;
 
 use crate::export::AtlasExporter;
 use crate::place::{PlacedTextureInfo, TexturePlacer};
-use crate::texture::{CroppedTexture, TextureCache};
+use crate::texture::cache::TextureCache;
+use crate::texture::CroppedTexture;
 
 pub type Atlas = Vec<PlacedTextureInfo>;
 
