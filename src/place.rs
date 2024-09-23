@@ -56,7 +56,7 @@ pub struct PlacedTextureGeometry {
 
 #[derive(Debug, Clone)]
 pub struct PlacedPolygonUVCoords {
-    pub id: String,
+    pub cluster_id: String,
     pub atlas_id: String,
     // UV coordinates on atlas
     pub placed_uv_coords: Vec<(f64, f64)>,
@@ -209,6 +209,21 @@ impl GuillotineTexturePlacer {
         }
     }
 
+    fn cropped_uv_to_placed_uv(
+        &self,
+        rect: Rect,
+        uv: (f64, f64),
+        width: u32,
+        height: u32,
+    ) -> (f64, f64) {
+        let (x, y) = self.uv_to_pixel(uv, width, height);
+        (
+            (rect.x as f64 + self.config.padding as f64 + x as f64) / self.config.width as f64,
+            1.0 - ((rect.y as f64 + self.config.padding as f64 + y as f64)
+                / self.config.height as f64),
+        )
+    }
+
     fn uv_to_pixel(&self, uv: (f64, f64), width: u32, height: u32) -> (u32, u32) {
         let x = (uv.0 * width as f64) as u32;
         let y = ((1.0 - uv.1) * height as f64) as u32;
@@ -229,24 +244,15 @@ impl TexturePlacer for GuillotineTexturePlacer {
         parent_atlas_id: String,
     ) -> (PlacedTextureGeometry, Vec<Option<PlacedPolygonUVCoords>>) {
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            toplevel_texture.width,
-            toplevel_texture.height,
+            toplevel_texture.width(),
+            toplevel_texture.height(),
             toplevel_texture.downsample_factor.value(),
         );
 
-        let width = scaled_width + self.config.padding;
-        let height = scaled_height + self.config.padding;
-
-        let cropped_uv_to_placed_uv = |rect: Rect, (u, v): (f64, f64)| {
-            let (x, y) = self.uv_to_pixel((u, v), scaled_width, scaled_height);
-            (
-                (rect.x as f64 + self.config.padding as f64 + x as f64) / self.config.width as f64,
-                1.0 - ((rect.y as f64 + self.config.padding as f64 + y as f64)
-                    / self.config.height as f64),
-            )
-        };
-
-        if let Some(rect) = self.find_best_rect(width, height) {
+        if let Some(rect) = self.find_best_rect(
+            scaled_width + self.config.padding,
+            scaled_height + self.config.padding,
+        ) {
             let toplevel_placed = PlacedTextureGeometry {
                 cluster_id: cluster_id.clone(),
                 atlas_id: parent_atlas_id.to_string(),
@@ -261,11 +267,12 @@ impl TexturePlacer for GuillotineTexturePlacer {
                     let placed_uv_coords = children_texture
                         .cropped_uv_coords
                         .iter()
-                        .map(|&(u, v)| cropped_uv_to_placed_uv(rect, (u, v)))
+                        .map(|&(u, v)| {
+                            self.cropped_uv_to_placed_uv(rect, (u, v), scaled_width, scaled_height)
+                        })
                         .collect::<Vec<(f64, f64)>>();
-
                     Some(PlacedPolygonUVCoords {
-                        id: children_texture_id.to_string(),
+                        cluster_id: children_texture_id.to_string(),
                         atlas_id: parent_atlas_id.to_string(),
                         placed_uv_coords,
                     })
@@ -286,8 +293,8 @@ impl TexturePlacer for GuillotineTexturePlacer {
 
     fn can_place(&self, texture: &ToplevelTexture) -> bool {
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            texture.width,
-            texture.height,
+            texture.width(),
+            texture.height(),
             texture.downsample_factor.value(),
         );
         let width = scaled_width + self.config.padding;

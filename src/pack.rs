@@ -117,6 +117,7 @@ impl AtlasPacker {
             }
 
             let current_atlas_id = atlases.len().to_string();
+
             let (toplevel_texture_info, children_texture_infos) = placer.place_texture(
                 cluster.toplevel_texture.clone(),
                 cluster.children.clone(),
@@ -153,9 +154,10 @@ impl AtlasPacker {
 }
 
 pub struct PackedAtlasProvider {
-    clusters: HashMap<String, Cluster>,
     // atlas id -> atlas
     atlases: HashMap<String, Atlas>,
+    // cluster id -> cluster
+    clusters: HashMap<String, Cluster>,
     // texture id -> placed texture info
     texture_info_map: HashMap<String, PlacedPolygonUVCoords>,
 }

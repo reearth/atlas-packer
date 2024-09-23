@@ -53,20 +53,15 @@ impl PolygonMappedTexture {
         }
     }
 
-    pub fn get_bbox(&self) -> (u32, u32, u32, u32) {
-        let (min_x, min_y, max_x, max_y) = calc_bbox(&self.pixel_coords);
-        (min_x, min_y, max_x - min_x, max_y - min_y)
-    }
-
     pub fn bbox_overlaps(&self, other: &Self) -> bool {
         if self.image_path != other.image_path {
             return false;
         }
 
-        let (x1, y1, w1, h1) = self.get_bbox();
-        let (x2, y2, w2, h2) = other.get_bbox();
+        let (min_x_0, min_y_0, max_x_0, max_y_0) = calc_bbox(&self.pixel_coords);
+        let (min_x_1, min_y_1, max_x_1, max_y_1) = calc_bbox(&other.pixel_coords);
 
-        !(x1 + w1 < x2 || x2 + w2 < x1 || y1 + h1 < y2 || y2 + h2 < y1)
+        !(max_x_0 < min_x_1 || max_x_1 < min_x_0 || max_y_0 < min_y_1 || max_y_1 < min_y_0)
     }
 
     pub fn get_cropped_uv_coords(
@@ -92,20 +87,16 @@ impl PolygonMappedTexture {
 pub struct ToplevelTexture {
     pub image_path: PathBuf,
     // The origin of the cropped image in the original image (top-left corner).
-    origin: (u32, u32),
-    pub width: u32,
-    pub height: u32,
+    crop_bbox: (u32, u32, u32, u32),
     pub downsample_factor: DownsampleFactor,
 }
 
 impl ToplevelTexture {
     pub fn new(texture: &PolygonMappedTexture) -> Self {
-        let bounding_box = texture.get_bbox();
+        let bounding_box = calc_bbox(&texture.pixel_coords);
         Self {
             image_path: texture.image_path.clone(),
-            origin: (bounding_box.0, bounding_box.1),
-            width: bounding_box.2,
-            height: bounding_box.3,
+            crop_bbox: bounding_box,
             downsample_factor: texture.downsample_factor.clone(),
         }
     }
@@ -115,25 +106,16 @@ impl ToplevelTexture {
             return None;
         }
 
-        let bounding_box_0 = texture.get_bbox();
+        let bounding_box_0 = calc_bbox(&texture.pixel_coords);
         let (min_x_0, min_y_0, max_x_0, max_y_0) = bounding_box_0;
 
-        let (min_x_1, min_y_1, max_x_1, max_y_1) = (
-            self.origin.0,
-            self.origin.1,
-            self.origin.0 + self.width,
-            self.origin.1 + self.height,
-        );
+        let (min_x_1, min_y_1, max_x_1, max_y_1) = self.crop_bbox;
 
         let (min_x_new, min_y_new) = (min_x_0.min(min_x_1), min_y_0.min(min_y_1));
         let (max_x_new, max_y_new) = (max_x_0.max(max_x_1), max_y_0.max(max_y_1));
-        let (width_new, height_new) = (max_x_new - min_x_new, max_y_new - min_y_new);
-
         Some(Self {
             image_path: texture.image_path.clone(),
-            origin: (min_x_new, min_y_new),
-            width: width_new,
-            height: height_new,
+            crop_bbox: (min_x_new, min_y_new, max_x_new, max_y_new),
             downsample_factor: DownsampleFactor::new(
                 &self
                     .downsample_factor
@@ -144,17 +126,28 @@ impl ToplevelTexture {
     }
 
     pub fn get_child(&self, texture: &PolygonMappedTexture) -> ChildTexture {
-        let (x, y, width, height) = texture.get_bbox();
-        let cropped_uv_coords = texture.get_cropped_uv_coords(x, y, width, height);
-        ChildTexture {
-            image_path: texture.image_path.clone(),
-            cropped_uv_coords,
-        }
+        let (min_x, min_y, max_x, max_y) = (
+            self.crop_bbox.0,
+            self.crop_bbox.1,
+            self.crop_bbox.2,
+            self.crop_bbox.3,
+        );
+        let cropped_uv_coords =
+            texture.get_cropped_uv_coords(min_x, min_y, max_x - min_x, max_y - min_y);
+        ChildTexture { cropped_uv_coords }
+    }
+
+    pub fn width(&self) -> u32 {
+        self.crop_bbox.2 - self.crop_bbox.0
+    }
+
+    pub fn height(&self) -> u32 {
+        self.crop_bbox.3 - self.crop_bbox.1
     }
 
     pub fn crop(&self, image: &DynamicImage) -> DynamicImage {
-        let (x, y) = self.origin;
-        let cropped_image = image.view(x, y, self.width, self.height).to_image();
+        let (x, y) = (self.crop_bbox.0, self.crop_bbox.1);
+        let cropped_image = image.view(x, y, self.width(), self.height()).to_image();
 
         // Collect pixels into a Vec and then process in parallel
         let pixels: Vec<_> = cropped_image.enumerate_pixels().collect();
@@ -177,13 +170,13 @@ impl ToplevelTexture {
                     'subpixels: for sx in 0..samples {
                         for sy in 0..samples {
                             let x = (px as f64 + (sx as f64 + 0.5) / samples as f64)
-                                / self.width as f64;
+                                / self.width() as f64;
                             let y = 1.0
                                 - (py as f64 + (sy as f64 + 0.5) / samples as f64)
-                                    / self.height as f64;
+                                    / self.height() as f64;
                             // Adjust x and y to the center of the pixel
-                            let center_x = x + 0.5 / self.width as f64;
-                            let center_y = y - 0.5 / self.height as f64;
+                            let center_x = x + 0.5 / self.width() as f64;
+                            let center_y = y - 0.5 / self.height() as f64;
 
                             // TODO !!!
                             if
@@ -210,7 +203,7 @@ impl ToplevelTexture {
             });
 
         // Collect results in the main thread
-        let mut clipped = ImageBuffer::new(self.width, self.height);
+        let mut clipped = ImageBuffer::new(self.width(), self.height());
         for received in receiver {
             for (px, py, pixel) in received {
                 clipped.put_pixel(px, py, pixel);
@@ -232,7 +225,6 @@ impl ToplevelTexture {
 
 #[derive(Debug, Clone)]
 pub struct ChildTexture {
-    image_path: PathBuf,
     // UV coordinates for the toplevel texture (bottom-left origin).
     pub cropped_uv_coords: Vec<(f64, f64)>,
 }
