@@ -2,6 +2,7 @@ use std::path::Path;
 
 use image::ImageReader;
 
+#[allow(dead_code)]
 pub fn is_point_inside_polygon(test_point: (f64, f64), polygon: &[(f64, f64)]) -> bool {
     let mut is_inside = false;
     let mut previous_vertex_index = polygon.len() - 1;

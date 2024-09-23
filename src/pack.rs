@@ -57,29 +57,28 @@ impl AtlasPacker {
 
         // cluster id -> texture ids
         let mut cluster_id_map: HashMap<String, Vec<String>> = HashMap::new();
-        for i in 0..texture_ids.len() {
+        for (i, texture_id) in texture_ids.iter().enumerate() {
             let cluster_id = disjoint_set.root(i).to_string();
-            let texture_id = texture_ids[i].clone();
             cluster_id_map
                 .entry(cluster_id.to_string())
                 .or_insert_with(Vec::new)
-                .push(texture_id);
+                .push(texture_id.clone());
         }
 
         // create toplevel textures
         let cluster_map = cluster_id_map
             .iter()
             .filter_map(|(cluster_id, texture_ids)| {
-                let toplevel_texture = texture_ids
-                    .iter()
-                    .fold(None, |acc: Option<ToplevelTexture>, texture_id| {
-                        let texture = self.textures.get(texture_id).unwrap();
-                        match acc {
-                            Some(toplevel_texture) => toplevel_texture.expand(texture),
-                            None => Some(ToplevelTexture::new(texture)),
-                        }
-                    })
-                    .unwrap();
+                let toplevel_texture =
+                    texture_ids
+                        .iter()
+                        .fold(None, |acc: Option<ToplevelTexture>, texture_id| {
+                            let texture = self.textures.get(texture_id).unwrap();
+                            match acc {
+                                Some(toplevel_texture) => toplevel_texture.expand(texture),
+                                None => Some(ToplevelTexture::new(texture)),
+                            }
+                        })?;
 
                 let children = texture_ids
                     .iter()

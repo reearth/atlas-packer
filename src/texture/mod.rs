@@ -1,10 +1,6 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::mpsc,
-};
+use std::path::{Path, PathBuf};
 
 use image::{DynamicImage, GenericImageView, ImageBuffer};
-use rayon::prelude::*;
 use utils::{calc_bbox, uv_to_pixel_coords};
 
 pub mod cache;
@@ -152,6 +148,8 @@ impl ToplevelTexture {
         // Collect pixels into a Vec and then process in parallel
         let pixels: Vec<_> = cropped_image.enumerate_pixels().collect();
 
+        // TODO: Crop pixels that are not contained in the polygon
+        /*
         let samples = 1;
         let num_threads = rayon::current_num_threads();
         let chunk_size = (pixels.len() / num_threads).clamp(1, pixels.len() + 1);
@@ -178,13 +176,10 @@ impl ToplevelTexture {
                             let center_x = x + 0.5 / self.width() as f64;
                             let center_y = y - 0.5 / self.height() as f64;
 
-                            // TODO !!!
-                            if
-                            /*is_point_inside_polygon(
+                            if is_point_inside_polygon(
                                 (center_x, center_y),
                                 &self.cropped_uv_coords,
-                            )*/
-                            true {
+                            ) {
                                 is_inside = true;
                                 break 'subpixels;
                             }
@@ -202,12 +197,18 @@ impl ToplevelTexture {
                 s.send(local_results).unwrap();
             });
 
+
         // Collect results in the main thread
         let mut clipped = ImageBuffer::new(self.width(), self.height());
         for received in receiver {
             for (px, py, pixel) in received {
                 clipped.put_pixel(px, py, pixel);
             }
+        }
+        */
+        let mut clipped = ImageBuffer::new(self.width(), self.height());
+        for &(px, py, pixel) in &pixels {
+            clipped.put_pixel(px, py, *pixel);
         }
 
         // Downsample

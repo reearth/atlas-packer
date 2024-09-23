@@ -5,7 +5,6 @@ pub struct DisjointSet {
     parent: Vec<usize>,
 }
 
-// TODO (optional): compress the path
 impl DisjointSet {
     pub fn new(num_elements: usize) -> Self {
         DisjointSet {
@@ -27,7 +26,8 @@ impl DisjointSet {
         self.parent[root_x] = root_y;
     }
 
-    pub fn is_same(&self, x: usize, y: usize) -> bool {
+    #[allow(dead_code)]
+    fn is_same(&self, x: usize, y: usize) -> bool {
         self.root(x) == self.root(y)
     }
 
