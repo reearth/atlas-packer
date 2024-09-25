@@ -7,14 +7,15 @@ use rayon::prelude::*;
 
 use crate::{
     place::PlacedTextureGeometry,
-    texture::{cache::TextureCache, ToplevelTexture},
+    texture::{cache::TextureCache, ClusterBoundingTexture},
+    ClusterID,
 };
 
 pub trait AtlasExporter: Sync + Send {
     fn export(
         &self,
         atlas_data: &[PlacedTextureGeometry],
-        textures: &HashMap<String, ToplevelTexture>,
+        textures: &HashMap<ClusterID, ClusterBoundingTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -50,7 +51,7 @@ impl AtlasExporter for WebpAtlasExporter {
     fn export(
         &self,
         atlas_data: &[PlacedTextureGeometry],
-        textures: &HashMap<String, ToplevelTexture>,
+        textures: &HashMap<ClusterID, ClusterBoundingTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -89,7 +90,7 @@ impl AtlasExporter for PngAtlasExporter {
     fn export(
         &self,
         atlas_data: &[PlacedTextureGeometry],
-        textures: &HashMap<String, ToplevelTexture>,
+        textures: &HashMap<ClusterID, ClusterBoundingTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -128,7 +129,7 @@ impl AtlasExporter for JpegAtlasExporter {
     fn export(
         &self,
         atlas_data: &[PlacedTextureGeometry],
-        textures: &HashMap<String, ToplevelTexture>,
+        textures: &HashMap<ClusterID, ClusterBoundingTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -145,7 +146,7 @@ impl AtlasExporter for JpegAtlasExporter {
 
 fn create_atlas_image(
     atlas_data: &[PlacedTextureGeometry],
-    textures: &HashMap<String, ToplevelTexture>,
+    textures: &HashMap<ClusterID, ClusterBoundingTexture>,
     texture_cache: &TextureCache,
     width: u32,
     height: u32,
@@ -170,7 +171,7 @@ fn create_atlas_image(
 
 fn create_atlas_image_jpeg(
     atlas_data: &[PlacedTextureGeometry],
-    textures: &HashMap<String, ToplevelTexture>,
+    textures: &HashMap<ClusterID, ClusterBoundingTexture>,
     texture_cache: &TextureCache,
     width: u32,
     height: u32,
