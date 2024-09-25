@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::texture::{ChildTexture, ToplevelTexture};
+use crate::{
+    texture::{ChildUVPolygon, ClusterBoundingTexture},
+    AtlasID, ClusterID, PolygonID,
+};
 
 #[derive(Debug, Clone)]
 pub struct TexturePlacerConfig {
@@ -46,8 +49,8 @@ impl TexturePlacerConfig {
 
 #[derive(Debug, Clone)]
 pub struct PlacedTextureGeometry {
-    pub cluster_id: String,
-    pub atlas_id: String,
+    pub cluster_id: ClusterID,
+    pub atlas_id: AtlasID,
     // Pixel coordinates on atlas
     pub origin: (u32, u32),
     pub width: u32,
@@ -55,9 +58,10 @@ pub struct PlacedTextureGeometry {
 }
 
 #[derive(Debug, Clone)]
-pub struct PlacedPolygonUVCoords {
-    pub cluster_id: String,
-    pub atlas_id: String,
+pub struct PlacedUVPolygon {
+    pub polygon_id: PolygonID,
+    pub cluster_id: ClusterID,
+    pub atlas_id: AtlasID,
     // UV coordinates on atlas
     pub placed_uv_coords: Vec<(f64, f64)>,
 }
@@ -65,16 +69,15 @@ pub struct PlacedPolygonUVCoords {
 pub trait TexturePlacer: Send + Sync {
     fn config(&self) -> &TexturePlacerConfig;
 
-    /// (toplevel_texture, children_textures) -> (toplevel_texture_info, children_texture_infos)
     fn place_texture(
         &mut self,
-        toplevel_texture: ToplevelTexture,
-        children: Vec<(String, ChildTexture)>,
-        cluster_id: String,
-        parent_atlas_id: String,
-    ) -> (PlacedTextureGeometry, Vec<Option<PlacedPolygonUVCoords>>);
+        bounding_texture: ClusterBoundingTexture,
+        children: Vec<(PolygonID, ChildUVPolygon)>,
+        cluster_id: ClusterID,
+        parent_atlas_id: AtlasID,
+    ) -> (PlacedTextureGeometry, Vec<Option<PlacedUVPolygon>>);
 
-    fn can_place(&self, texture: &ToplevelTexture) -> bool;
+    fn can_place(&self, texture: &ClusterBoundingTexture) -> bool;
 
     fn reset_param(&mut self);
 
@@ -238,24 +241,24 @@ impl TexturePlacer for GuillotineTexturePlacer {
 
     fn place_texture(
         &mut self,
-        toplevel_texture: ToplevelTexture,
-        children: Vec<(String, ChildTexture)>,
-        cluster_id: String,
-        parent_atlas_id: String,
-    ) -> (PlacedTextureGeometry, Vec<Option<PlacedPolygonUVCoords>>) {
+        bounding_texture: ClusterBoundingTexture,
+        children: Vec<(PolygonID, ChildUVPolygon)>,
+        cluster_id: ClusterID,
+        parent_atlas_id: AtlasID,
+    ) -> (PlacedTextureGeometry, Vec<Option<PlacedUVPolygon>>) {
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            toplevel_texture.width(),
-            toplevel_texture.height(),
-            toplevel_texture.downsample_factor.value(),
+            bounding_texture.crop_width,
+            bounding_texture.crop_height,
+            bounding_texture.downsample_factor.value(),
         );
 
         if let Some(rect) = self.find_best_rect(
             scaled_width + self.config.padding,
             scaled_height + self.config.padding,
         ) {
-            let toplevel_placed = PlacedTextureGeometry {
+            let bounding_placed = PlacedTextureGeometry {
                 cluster_id: cluster_id.clone(),
-                atlas_id: parent_atlas_id.to_string(),
+                atlas_id: parent_atlas_id,
                 origin: (rect.x + self.config.padding, rect.y + self.config.padding),
                 width: scaled_width,
                 height: scaled_height,
@@ -263,38 +266,38 @@ impl TexturePlacer for GuillotineTexturePlacer {
 
             let children_placed = children
                 .iter()
-                .map(|(children_texture_id, children_texture)| {
-                    let placed_uv_coords = children_texture
+                .map(|(polygon_id, uv_polygon)| {
+                    let placed_uv_coords = uv_polygon
                         .cropped_uv_coords
                         .iter()
                         .map(|&(u, v)| {
                             self.cropped_uv_to_placed_uv(rect, (u, v), scaled_width, scaled_height)
                         })
                         .collect::<Vec<(f64, f64)>>();
-                    Some(PlacedPolygonUVCoords {
-                        cluster_id: children_texture_id.to_string(),
-                        atlas_id: parent_atlas_id.to_string(),
+                    Some(PlacedUVPolygon {
+                        polygon_id: polygon_id.clone(),
+                        cluster_id: cluster_id.clone(),
+                        atlas_id: parent_atlas_id,
                         placed_uv_coords,
                     })
                 })
-                .collect::<Vec<Option<PlacedPolygonUVCoords>>>();
+                .collect::<Vec<Option<PlacedUVPolygon>>>();
 
-            self.used_rects
-                .insert(cluster_id.to_string(), toplevel_placed.clone());
+            self.used_rects.insert(cluster_id, bounding_placed.clone());
             self.free_rects.retain(|r| r != &rect);
-            self.split_rect(rect, &toplevel_placed);
+            self.split_rect(rect, &bounding_placed);
             self.merge_free_rects();
-            (toplevel_placed, children_placed)
+            (bounding_placed, children_placed)
         } else {
             // todo: Consideration of processing when the texture is larger than the atlas size
             panic!("Texture could not be placed: {}", cluster_id);
         }
     }
 
-    fn can_place(&self, texture: &ToplevelTexture) -> bool {
+    fn can_place(&self, texture: &ClusterBoundingTexture) -> bool {
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            texture.width(),
-            texture.height(),
+            texture.crop_width,
+            texture.crop_height,
             texture.downsample_factor.value(),
         );
         let width = scaled_width + self.config.padding;

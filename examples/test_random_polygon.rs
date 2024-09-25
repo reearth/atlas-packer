@@ -64,7 +64,7 @@ fn main() {
 
             let num_points = 5;
             let mut radians = (0..num_points)
-                .map(|_| random_in_range(0.0, 6.28))
+                .map(|_| random_in_range(0.0, std::f64::consts::TAU))
                 .collect::<Vec<f64>>();
 
             radians.sort_by(|a, b| a.total_cmp(b));
