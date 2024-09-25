@@ -5,14 +5,16 @@ use hashbrown::HashMap;
 use image::{ImageBuffer, ImageFormat, Rgb, Rgba};
 use rayon::prelude::*;
 
-use crate::place::PlacedTextureInfo;
-use crate::texture::{CroppedTexture, TextureCache};
+use crate::{
+    place::PlacedTextureGeometry,
+    texture::{cache::TextureCache, ToplevelTexture},
+};
 
 pub trait AtlasExporter: Sync + Send {
     fn export(
         &self,
-        atlas_data: &[PlacedTextureInfo],
-        textures: &HashMap<String, CroppedTexture>,
+        atlas_data: &[PlacedTextureGeometry],
+        textures: &HashMap<String, ToplevelTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -47,8 +49,8 @@ impl AtlasExporter for WebpAtlasExporter {
 
     fn export(
         &self,
-        atlas_data: &[PlacedTextureInfo],
-        textures: &HashMap<String, CroppedTexture>,
+        atlas_data: &[PlacedTextureGeometry],
+        textures: &HashMap<String, ToplevelTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -86,8 +88,8 @@ impl AtlasExporter for PngAtlasExporter {
 
     fn export(
         &self,
-        atlas_data: &[PlacedTextureInfo],
-        textures: &HashMap<String, CroppedTexture>,
+        atlas_data: &[PlacedTextureGeometry],
+        textures: &HashMap<String, ToplevelTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -125,8 +127,8 @@ impl AtlasExporter for JpegAtlasExporter {
 
     fn export(
         &self,
-        atlas_data: &[PlacedTextureInfo],
-        textures: &HashMap<String, CroppedTexture>,
+        atlas_data: &[PlacedTextureGeometry],
+        textures: &HashMap<String, ToplevelTexture>,
         output_path: &Path,
         texture_cache: &TextureCache,
         width: u32,
@@ -142,8 +144,8 @@ impl AtlasExporter for JpegAtlasExporter {
 }
 
 fn create_atlas_image(
-    atlas_data: &[PlacedTextureInfo],
-    textures: &HashMap<String, CroppedTexture>,
+    atlas_data: &[PlacedTextureGeometry],
+    textures: &HashMap<String, ToplevelTexture>,
     texture_cache: &TextureCache,
     width: u32,
     height: u32,
@@ -151,7 +153,7 @@ fn create_atlas_image(
     let atlas_image = Mutex::new(ImageBuffer::new(width, height));
 
     atlas_data.par_iter().for_each(|info| {
-        let texture = textures.get(&info.id).unwrap();
+        let texture = textures.get(&info.cluster_id).unwrap();
         let cropped = texture.crop(&texture_cache.get_image(&texture.image_path));
         let image = cropped.as_rgba8().unwrap();
 
@@ -167,8 +169,8 @@ fn create_atlas_image(
 }
 
 fn create_atlas_image_jpeg(
-    atlas_data: &[PlacedTextureInfo],
-    textures: &HashMap<String, CroppedTexture>,
+    atlas_data: &[PlacedTextureGeometry],
+    textures: &HashMap<String, ToplevelTexture>,
     texture_cache: &TextureCache,
     width: u32,
     height: u32,
@@ -176,7 +178,7 @@ fn create_atlas_image_jpeg(
     let atlas_image = Mutex::new(ImageBuffer::new(width, height));
 
     atlas_data.par_iter().for_each(|info| {
-        let texture = textures.get(&info.id).unwrap();
+        let texture = textures.get(&info.cluster_id).unwrap();
         let cropped = texture.crop(&texture_cache.get_image(&texture.image_path));
         let image = cropped.to_rgb8();
 
