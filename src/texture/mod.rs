@@ -49,6 +49,12 @@ impl PolygonMappedTexture {
         }
     }
 
+    #[inline]
+    pub fn bbox(&self) -> (u32, u32, u32, u32) {
+        calc_bbox(&self.pixel_coords)
+    }
+
+    #[allow(dead_code)]
     pub fn bbox_overlaps(&self, other: &Self) -> bool {
         if self.image_path != other.image_path {
             return false;
