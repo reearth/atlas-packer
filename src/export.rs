@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use hashbrown::HashMap;
-use image::{ImageBuffer, ImageFormat, Rgb, Rgba};
+use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
 use rayon::prelude::*;
 
 use crate::{
@@ -57,11 +57,13 @@ impl AtlasExporter for WebpAtlasExporter {
         width: u32,
         height: u32,
     ) {
-        let atlas_image = create_atlas_image(atlas_data, textures, texture_cache, width, height);
         let output_path = output_path.with_extension(self.get_extension());
-        atlas_image
-            .save_with_format(output_path, self.get_image_format())
-            .unwrap();
+
+        let atlas_image = create_atlas_rgba(atlas_data, textures, texture_cache, width, height);
+        let binding = DynamicImage::ImageRgba8(atlas_image);
+        let webp_encoder = webp::Encoder::from_image(&binding).unwrap();
+        let webp = webp_encoder.encode(75.0);
+        std::fs::write(output_path, &*webp).unwrap();
     }
 }
 
@@ -96,7 +98,7 @@ impl AtlasExporter for PngAtlasExporter {
         width: u32,
         height: u32,
     ) {
-        let atlas_image = create_atlas_image(atlas_data, textures, texture_cache, width, height);
+        let atlas_image = create_atlas_rgba(atlas_data, textures, texture_cache, width, height);
         let output_path = output_path.with_extension(self.get_extension());
         atlas_image
             .save_with_format(output_path, self.get_image_format())
@@ -136,7 +138,7 @@ impl AtlasExporter for JpegAtlasExporter {
         height: u32,
     ) {
         let atlas_image =
-            create_atlas_image_jpeg(atlas_data, textures, texture_cache, width, height);
+            create_atlas_image_rgb(atlas_data, textures, texture_cache, width, height);
         let output_path = output_path.with_extension(self.get_extension());
         atlas_image
             .save_with_format(output_path, self.get_image_format())
@@ -144,7 +146,7 @@ impl AtlasExporter for JpegAtlasExporter {
     }
 }
 
-fn create_atlas_image(
+fn create_atlas_rgba(
     atlas_data: &[PlacedTextureGeometry],
     textures: &HashMap<ClusterID, ClusterBoundingTexture>,
     texture_cache: &TextureCache,
@@ -169,7 +171,7 @@ fn create_atlas_image(
     atlas_image.into_inner().unwrap()
 }
 
-fn create_atlas_image_jpeg(
+fn create_atlas_image_rgb(
     atlas_data: &[PlacedTextureGeometry],
     textures: &HashMap<ClusterID, ClusterBoundingTexture>,
     texture_cache: &TextureCache,

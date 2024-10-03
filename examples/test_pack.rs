@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+use atlas_packer::export::WebpAtlasExporter;
 use atlas_packer::texture::PolygonMappedTexture;
 use rayon::prelude::*;
 
@@ -97,7 +98,7 @@ fn main() {
     let texture_cache = TextureCache::new(100_000_000);
     let output_dir = Path::new("./examples/output/");
     packed.export(
-        JpegAtlasExporter::default(),
+        WebpAtlasExporter::default(),
         output_dir,
         &texture_cache,
         config.width(),
