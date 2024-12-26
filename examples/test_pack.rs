@@ -7,7 +7,6 @@ use atlas_packer::texture::PolygonMappedTexture;
 use rayon::prelude::*;
 
 use atlas_packer::{
-    export::JpegAtlasExporter,
     pack::AtlasPacker,
     place::{GuillotineTexturePlacer, TexturePlacerConfig},
     texture::{

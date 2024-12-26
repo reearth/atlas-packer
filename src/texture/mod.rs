@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use image::{DynamicImage, GenericImageView, ImageBuffer};
+use image::{buffer, DynamicImage, GenericImageView, ImageBuffer};
 use utils::{calc_bbox, uv_to_pixel_coords};
 
 pub mod cache;
@@ -72,13 +72,14 @@ impl PolygonMappedTexture {
         y: u32,
         width: u32,
         height: u32,
+        buffer: u32,
     ) -> Vec<(f64, f64)> {
         self.pixel_coords
             .iter()
             .map(|(px, py)| {
                 (
-                    (*px - x) as f64 / width as f64,
-                    1.0 - (*py - y) as f64 / height as f64,
+                    (*px - x + buffer) as f64 / (width + buffer * 2) as f64,
+                    1.0 - (*py - y + buffer) as f64 / (height + buffer * 2) as f64,
                 )
             })
             .collect()
@@ -88,18 +89,20 @@ impl PolygonMappedTexture {
 #[derive(Debug, Clone)]
 pub struct ClusterBoundingTexture {
     pub image_path: PathBuf,
+    pub buffer: u32,
     // The origin of the cropped image in the original image (top-left corner).
     crop_origin: (u32, u32),
-    pub crop_width: u32,
-    pub crop_height: u32,
+    crop_width: u32,
+    crop_height: u32,
     pub downsample_factor: DownsampleFactor,
 }
 
 impl ClusterBoundingTexture {
-    pub fn new(texture: &PolygonMappedTexture) -> Self {
+    pub fn new(texture: &PolygonMappedTexture, buffer: u32) -> Self {
         let bounding_box = calc_bbox(&texture.pixel_coords);
         Self {
             image_path: texture.image_path.clone(),
+            buffer,
             crop_origin: (bounding_box.0, bounding_box.1),
             crop_width: bounding_box.2 - bounding_box.0,
             crop_height: bounding_box.3 - bounding_box.1,
@@ -126,6 +129,7 @@ impl ClusterBoundingTexture {
 
         Some(Self {
             image_path: texture.image_path.clone(),
+            buffer: self.buffer,
             crop_origin: (min_x_new, min_y_new),
             crop_width: max_x_new - min_x_new,
             crop_height: max_y_new - min_y_new,
@@ -144,19 +148,36 @@ impl ClusterBoundingTexture {
             self.crop_origin.1,
             self.crop_width,
             self.crop_height,
+            self.buffer,
         );
         ChildUVPolygon { cropped_uv_coords }
     }
 
+    pub fn get_buffered_geometry(&self) -> (i32, i32, u32, u32) {
+        (
+            (self.crop_origin.0 - self.buffer) as i32,
+            (self.crop_origin.1 - self.buffer) as i32,
+            self.crop_width + self.buffer * 2,
+            self.crop_height + self.buffer * 2,
+        )
+    }
+
     pub fn crop(&self, image: &DynamicImage) -> DynamicImage {
-        let cropped_image = image
-            .view(
-                self.crop_origin.0,
-                self.crop_origin.1,
-                self.crop_width,
-                self.crop_height,
-            )
-            .to_image();
+        let (buffered_x, buffered_y, buffered_width, buffered_height) =
+            self.get_buffered_geometry();
+        let mut cropped_image = ImageBuffer::new(buffered_width, buffered_height);
+        for x in 0..buffered_width {
+            for y in 0..buffered_height {
+                let px = x as i32 + buffered_x;
+                let py = y as i32 + buffered_y;
+                if px >= 0 && py >= 0 && px < image.width() as i32 && py < image.height() as i32 {
+                    let (px, py) = (px as u32, py as u32);
+                    cropped_image.put_pixel(x, y, image.get_pixel(px, py));
+                } else {
+                    cropped_image.put_pixel(x, y, image::Rgba([200, 0, 0, 255]));
+                }
+            }
+        }
 
         // Collect pixels into a Vec and then process in parallel
         let pixels: Vec<_> = cropped_image.enumerate_pixels().collect();
@@ -219,7 +240,7 @@ impl ClusterBoundingTexture {
             }
         }
         */
-        let mut clipped = ImageBuffer::new(self.crop_width, self.crop_height);
+        let mut clipped = ImageBuffer::new(buffered_width, buffered_height);
         for &(px, py, pixel) in &pixels {
             clipped.put_pixel(px, py, *pixel);
         }

@@ -246,9 +246,10 @@ impl TexturePlacer for GuillotineTexturePlacer {
         cluster_id: ClusterID,
         parent_atlas_id: AtlasID,
     ) -> (PlacedTextureGeometry, Vec<Option<PlacedUVPolygon>>) {
+        let (_, _, buffered_width, buffered_height) = bounding_texture.get_buffered_geometry();
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            bounding_texture.crop_width,
-            bounding_texture.crop_height,
+            buffered_width,
+            buffered_height,
             bounding_texture.downsample_factor.value(),
         );
 
@@ -295,9 +296,10 @@ impl TexturePlacer for GuillotineTexturePlacer {
     }
 
     fn can_place(&self, texture: &ClusterBoundingTexture) -> bool {
+        let (_, _, buffered_width, buffered_height) = texture.get_buffered_geometry();
         let (scaled_width, scaled_height) = self.scale_dimensions(
-            texture.crop_width,
-            texture.crop_height,
+            buffered_width,
+            buffered_height,
             texture.downsample_factor.value(),
         );
         let width = scaled_width + self.config.padding;
