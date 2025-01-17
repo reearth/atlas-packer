@@ -21,7 +21,7 @@ impl Default for AtlasPacker {
     fn default() -> Self {
         Self {
             textures: HashMap::new(),
-            buffer: 10,
+            buffer: 2,
         }
     }
 }

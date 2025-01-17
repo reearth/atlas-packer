@@ -165,17 +165,13 @@ impl ClusterBoundingTexture {
     pub fn crop(&self, image: &DynamicImage) -> DynamicImage {
         let (buffered_x, buffered_y, buffered_width, buffered_height) =
             self.get_buffered_geometry();
+            
         let mut cropped_image = ImageBuffer::new(buffered_width, buffered_height);
         for x in 0..buffered_width {
             for y in 0..buffered_height {
-                let px = x as i32 + buffered_x;
-                let py = y as i32 + buffered_y;
-                if px >= 0 && py >= 0 && px < image.width() as i32 && py < image.height() as i32 {
-                    let (px, py) = (px as u32, py as u32);
-                    cropped_image.put_pixel(x, y, image.get_pixel(px, py));
-                } else {
-                    cropped_image.put_pixel(x, y, image::Rgba([200, 0, 0, 255]));
-                }
+                let px = (x as i32 + buffered_x).clamp(0, image.width() as i32 - 1) as u32;
+                let py = (y as i32 + buffered_y).clamp(0, image.height() as i32 - 1) as u32;
+                cropped_image.put_pixel(x, y, image.get_pixel(px, py));
             }
         }
 
