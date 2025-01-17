@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use hashbrown::HashMap;
-use image::{buffer, DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
+use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
 use rayon::prelude::*;
 
 use crate::{
@@ -153,13 +153,7 @@ fn create_atlas_rgba(
     width: u32,
     height: u32,
 ) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let buffer = textures
-        .values()
-        .map(|texture| texture.buffer)
-        .max()
-        .unwrap_or(0);
-
-    let atlas_image = Mutex::new(ImageBuffer::new(width + buffer * 2, height + buffer * 2));
+    let atlas_image = Mutex::new(ImageBuffer::new(width, height));
 
     atlas_data.par_iter().for_each(|info| {
         let texture = textures.get(&info.cluster_id).unwrap();
@@ -184,12 +178,7 @@ fn create_atlas_image_rgb(
     width: u32,
     height: u32,
 ) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
-    let buffer = textures
-        .values()
-        .map(|texture| texture.buffer)
-        .max()
-        .unwrap_or(0);
-    let atlas_image = Mutex::new(ImageBuffer::new(width + buffer * 2, height + buffer * 2));
+    let atlas_image = Mutex::new(ImageBuffer::new(width, height));
 
     atlas_data.par_iter().for_each(|info| {
         let texture = textures.get(&info.cluster_id).unwrap();

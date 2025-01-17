@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use image::{buffer, DynamicImage, GenericImageView, ImageBuffer};
+use image::{DynamicImage, GenericImageView, ImageBuffer};
 use utils::{calc_bbox, uv_to_pixel_coords};
 
 pub mod cache;
