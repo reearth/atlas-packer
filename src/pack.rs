@@ -14,12 +14,14 @@ pub type Atlas = Vec<PlacedTextureGeometry>;
 
 pub struct AtlasPacker {
     textures: HashMap<PolygonID, PolygonMappedTexture>,
+    buffer: u32,
 }
 
 impl Default for AtlasPacker {
     fn default() -> Self {
         Self {
             textures: HashMap::new(),
+            buffer: 2,
         }
     }
 }
@@ -113,7 +115,7 @@ impl AtlasPacker {
                         let texture = self.textures.get(polygon_id).unwrap();
                         match acc {
                             Some(bounding_texture) => bounding_texture.expand(texture),
-                            None => Some(ClusterBoundingTexture::new(texture)),
+                            None => Some(ClusterBoundingTexture::new(texture, self.buffer)),
                         }
                     },
                 )?;
