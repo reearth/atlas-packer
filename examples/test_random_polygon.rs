@@ -51,7 +51,7 @@ fn main() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(0);
 
-    let mut random_in_range = |min: f64, max: f64| rng.gen_range(min..max);
+    let mut random_in_range = |min: f64, max: f64| rng.random_range(min..=max);
 
     for i in 0..100 {
         for j in 1..11 {
