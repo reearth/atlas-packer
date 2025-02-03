@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+
+jobs:
+  ci:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+      - name: install required tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: taplo-cli
+      - name: check
+        run: cargo check --all-targets --all-features
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --all-targets --all-features  -- -D warnings
+      - name: taplo
+        run: taplo fmt --check
+      - name: run tests
+        run: cargo test --all-targets --all-features
