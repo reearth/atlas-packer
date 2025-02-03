@@ -165,7 +165,7 @@ impl ClusterBoundingTexture {
     pub fn crop(&self, image: &DynamicImage) -> DynamicImage {
         let (buffered_x, buffered_y, buffered_width, buffered_height) =
             self.get_buffered_geometry();
-            
+
         let mut cropped_image = ImageBuffer::new(buffered_width, buffered_height);
         for x in 0..buffered_width {
             for y in 0..buffered_height {
