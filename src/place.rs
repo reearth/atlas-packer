@@ -11,8 +11,6 @@ pub struct TexturePlacerConfig {
     height: u32,
     padding: u32,
     buffer: u32,
-    // and more option
-    // Allow rotation, allow multiple pages, adjust resolution, specify resampling method, etc...
 }
 
 impl Default for TexturePlacerConfig {
@@ -22,6 +20,7 @@ impl Default for TexturePlacerConfig {
 }
 
 impl TexturePlacerConfig {
+    // create a TexturePlacerConfig taking exact atlas size
     pub fn new(width: u32, height: u32, padding: u32, buffer: u32) -> Self {
         TexturePlacerConfig {
             width: width.checked_next_power_of_two().unwrap(),
@@ -31,6 +30,7 @@ impl TexturePlacerConfig {
         }
     }
 
+    // Creates a TexturePlacerConfig taking max allowed texture size
     pub fn new_padded(
         max_texture_width: u32,
         max_texture_height: u32,
