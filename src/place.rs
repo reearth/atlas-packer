@@ -22,21 +22,19 @@ impl Default for TexturePlacerConfig {
 }
 
 impl TexturePlacerConfig {
-    // User provides max texture size, we calculate atlas size including buffer and padding
-    pub fn new(max_texture_width: u32, max_texture_height: u32, padding: u32, buffer: u32) -> Self {
-        let width = (max_texture_width + buffer * 2 + padding * 2)
-            .checked_next_power_of_two()
-            .unwrap();
-        let height = (max_texture_height + buffer * 2 + padding * 2)
-            .checked_next_power_of_two()
-            .unwrap();
-
+    pub fn new(width: u32, height: u32, padding: u32, buffer: u32) -> Self {
         TexturePlacerConfig {
-            width,
-            height,
+            width: width.checked_next_power_of_two().unwrap(),
+            height: height.checked_next_power_of_two().unwrap(),
             padding,
             buffer,
         }
+    }
+
+    pub fn new_padded(max_texture_width: u32, max_texture_height: u32, padding: u32, buffer: u32) -> Self {
+        let atlas_width = max_texture_width + padding * 2 + buffer * 2;
+        let atlas_height = max_texture_height + padding * 2 + buffer * 2;
+        Self::new(atlas_width, atlas_height, padding, buffer)
     }
 
     pub fn width(&self) -> u32 {

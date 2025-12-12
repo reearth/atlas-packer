@@ -243,17 +243,45 @@ mod tests {
         // User creates an atlas packer (no hidden buffer anymore!)
         let mut packer = AtlasPacker::default();
 
+        let width = 1024;
+        let height = 1024;
         // User adds a texture that is exactly 1024x1024
         let texture = PolygonMappedTexture::new(
             Path::new("test.png"),
-            (1024, 1024),
+            (width, height),
             &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
             DownsampleFactor::new(&1.0),
         );
         packer.add_texture("polygon1".to_string(), texture);
 
         // User creates a placer with 1024x1024 atlas with 2 pixels buffer
-        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new(1024, 1024, 0, 2));
+        let buffer = 2;
+        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new_padded(width, height, 0, buffer));
+        packer.pack(placer);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_placing_same_size_without_buffer() {
+        // User creates an atlas packer (no hidden buffer anymore!)
+        let mut packer = AtlasPacker::default();
+
+        let width = 1024;
+        let height = 1024;
+        // User adds a texture that is exactly 1024x1024
+        let texture = PolygonMappedTexture::new(
+            Path::new("test.png"),
+            (width, height),
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            DownsampleFactor::new(&1.0),
+        );
+        packer.add_texture("polygon1".to_string(), texture);
+
+        // User creates a placer with 1024x1024 atlas with 2 pixels buffer without reserving space for buffer
+        let buffer = 2;
+        let atlas_width = width;
+        let atlas_height = height;
+        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new(atlas_width, atlas_height, 0, buffer));
         packer.pack(placer);
     }
 }
