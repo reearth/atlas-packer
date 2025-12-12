@@ -31,7 +31,12 @@ impl TexturePlacerConfig {
         }
     }
 
-    pub fn new_padded(max_texture_width: u32, max_texture_height: u32, padding: u32, buffer: u32) -> Self {
+    pub fn new_padded(
+        max_texture_width: u32,
+        max_texture_height: u32,
+        padding: u32,
+        buffer: u32,
+    ) -> Self {
         let atlas_width = max_texture_width + padding * 2 + buffer * 2;
         let atlas_height = max_texture_height + padding * 2 + buffer * 2;
         Self::new(atlas_width, atlas_height, padding, buffer)

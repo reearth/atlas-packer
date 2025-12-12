@@ -256,7 +256,8 @@ mod tests {
 
         // User creates a placer with 1024x1024 atlas with 2 pixels buffer
         let buffer = 2;
-        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new_padded(width, height, 0, buffer));
+        let placer =
+            GuillotineTexturePlacer::new(TexturePlacerConfig::new_padded(width, height, 0, buffer));
         packer.pack(placer);
     }
 
@@ -281,7 +282,12 @@ mod tests {
         let buffer = 2;
         let atlas_width = width;
         let atlas_height = height;
-        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new(atlas_width, atlas_height, 0, buffer));
+        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new(
+            atlas_width,
+            atlas_height,
+            0,
+            buffer,
+        ));
         packer.pack(placer);
     }
 }
