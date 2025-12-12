@@ -91,11 +91,7 @@ fn main() {
     }
 
     // initialize texture packer
-    let config = TexturePlacerConfig {
-        width: 4096,
-        height: 4096,
-        padding: 0,
-    };
+    let config = TexturePlacerConfig::new(4096, 4096, 0, 2);
 
     let packer = Mutex::new(AtlasPacker::default());
 
@@ -140,7 +136,7 @@ fn main() {
         count += 1;
         if let Some(info) = packed.get_texture_info(&polygon.id) {
             let pixel_coords =
-                uv_to_pixel_coords(&info.placed_uv_coords, config.width, config.height);
+                uv_to_pixel_coords(&info.placed_uv_coords, config.width(), config.height());
 
             let tex_bbox = calc_bbox(&pixel_coords);
 
