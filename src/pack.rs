@@ -14,14 +14,12 @@ pub type Atlas = Vec<PlacedTextureGeometry>;
 
 pub struct AtlasPacker {
     textures: HashMap<PolygonID, PolygonMappedTexture>,
-    buffer: u32,
 }
 
 impl Default for AtlasPacker {
     fn default() -> Self {
         Self {
             textures: HashMap::new(),
-            buffer: 2,
         }
     }
 }
@@ -53,7 +51,7 @@ impl AtlasPacker {
         self.textures.insert(polygon_id, texture);
     }
 
-    fn create_clusters(&self) -> HashMap<ClusterID, Cluster> {
+    fn create_clusters(&self, buffer: u32) -> HashMap<ClusterID, Cluster> {
         let polygon_ids: Vec<PolygonID> = self.textures.keys().cloned().collect();
 
         let mut rtree = RTree::new();
@@ -115,7 +113,7 @@ impl AtlasPacker {
                         let texture = self.textures.get(polygon_id).unwrap();
                         match acc {
                             Some(bounding_texture) => bounding_texture.expand(texture),
-                            None => Some(ClusterBoundingTexture::new(texture, self.buffer)),
+                            None => Some(ClusterBoundingTexture::new(texture, buffer)),
                         }
                     },
                 )?;
@@ -145,7 +143,8 @@ impl AtlasPacker {
         let mut current_atlas: Atlas = Vec::new();
         let mut atlases: HashMap<AtlasID, Atlas> = HashMap::new();
 
-        let clusters = self.create_clusters();
+        let buffer = placer.config().buffer();
+        let clusters = self.create_clusters(buffer);
         let mut placed_uv_polygon_map: HashMap<PolygonID, PlacedUVPolygon> = HashMap::new();
         for (cluster_id, cluster) in clusters.iter() {
             if !placer.can_place(&cluster.bounding_texture) {
@@ -229,5 +228,66 @@ impl PackedAtlasProvider {
 
     pub fn get_texture_info(&self, polygon_id: &PolygonID) -> Option<&PlacedUVPolygon> {
         self.placed_uv_polygon_map.get(polygon_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::place::{GuillotineTexturePlacer, TexturePlacerConfig};
+    use crate::texture::{DownsampleFactor, PolygonMappedTexture};
+    use std::path::Path;
+
+    #[test]
+    fn test_placing_same_size() {
+        // User creates an atlas packer (no hidden buffer anymore!)
+        let mut packer = AtlasPacker::default();
+
+        let width = 1024;
+        let height = 1024;
+        // User adds a texture that is exactly 1024x1024
+        let texture = PolygonMappedTexture::new(
+            Path::new("test.png"),
+            (width, height),
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            DownsampleFactor::new(&1.0),
+        );
+        packer.add_texture("polygon1".to_string(), texture);
+
+        // User creates a placer with 1024x1024 atlas with 2 pixels buffer
+        let buffer = 2;
+        let placer =
+            GuillotineTexturePlacer::new(TexturePlacerConfig::new_padded(width, height, 0, buffer));
+        packer.pack(placer);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_placing_same_size_without_buffer() {
+        // User creates an atlas packer (no hidden buffer anymore!)
+        let mut packer = AtlasPacker::default();
+
+        let width = 1024;
+        let height = 1024;
+        // User adds a texture that is exactly 1024x1024
+        let texture = PolygonMappedTexture::new(
+            Path::new("test.png"),
+            (width, height),
+            &[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            DownsampleFactor::new(&1.0),
+        );
+        packer.add_texture("polygon1".to_string(), texture);
+
+        // User creates a placer with 1024x1024 atlas with 2 pixels buffer without reserving space for buffer
+        let buffer = 2;
+        let atlas_width = width;
+        let atlas_height = height;
+        let placer = GuillotineTexturePlacer::new(TexturePlacerConfig::new(
+            atlas_width,
+            atlas_height,
+            0,
+            buffer,
+        ));
+        packer.pack(placer);
     }
 }

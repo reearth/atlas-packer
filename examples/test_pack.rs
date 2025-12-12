@@ -54,11 +54,7 @@ fn main() {
     }
 
     // initialize texture packer
-    let config = TexturePlacerConfig {
-        width: 4096,
-        height: 4096,
-        padding: 0,
-    };
+    let config = TexturePlacerConfig::new(4096, 4096, 0, 2);
 
     let packer = Mutex::new(AtlasPacker::default());
 

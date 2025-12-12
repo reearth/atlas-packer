@@ -14,7 +14,7 @@ use utils::unused_pixels;
 fn main() {
     let texture_cache = TextureCache::new(100_000_000);
 
-    let config = TexturePlacerConfig::new(500, 500, 1);
+    let config = TexturePlacerConfig::new(500, 500, 1, 2);
 
     let packer = AtlasPacker::default();
     let packed = packer.pack(GuillotineTexturePlacer::new(config.clone()));

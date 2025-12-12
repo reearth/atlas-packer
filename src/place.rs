@@ -7,31 +7,39 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct TexturePlacerConfig {
-    pub width: u32,
-    pub height: u32,
-    pub padding: u32,
-    // and more option
-    // Allow rotation, allow multiple pages, adjust resolution, specify resampling method, etc...
+    width: u32,
+    height: u32,
+    padding: u32,
+    buffer: u32,
 }
 
 impl Default for TexturePlacerConfig {
     fn default() -> Self {
-        TexturePlacerConfig {
-            width: 1024,
-            height: 1024,
-            padding: 0,
-        }
+        Self::new(1024, 1024, 0, 2)
     }
 }
 
 impl TexturePlacerConfig {
-    // Ensure that the width and height are powers of two
-    pub fn new(width: u32, height: u32, padding: u32) -> Self {
+    // create a TexturePlacerConfig taking exact atlas size
+    pub fn new(width: u32, height: u32, padding: u32, buffer: u32) -> Self {
         TexturePlacerConfig {
             width: width.checked_next_power_of_two().unwrap(),
             height: height.checked_next_power_of_two().unwrap(),
             padding,
+            buffer,
         }
+    }
+
+    // Creates a TexturePlacerConfig taking max allowed texture size
+    pub fn new_padded(
+        max_texture_width: u32,
+        max_texture_height: u32,
+        padding: u32,
+        buffer: u32,
+    ) -> Self {
+        let atlas_width = max_texture_width + padding * 2 + buffer * 2;
+        let atlas_height = max_texture_height + padding * 2 + buffer * 2;
+        Self::new(atlas_width, atlas_height, padding, buffer)
     }
 
     pub fn width(&self) -> u32 {
@@ -44,6 +52,10 @@ impl TexturePlacerConfig {
 
     pub fn padding(&self) -> u32 {
         self.padding
+    }
+
+    pub fn buffer(&self) -> u32 {
+        self.buffer
     }
 }
 
